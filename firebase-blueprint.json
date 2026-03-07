@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "movement": {
+      "title": "Movement",
+      "description": "A logistics mission or movement record.",
+      "type": "object",
+      "properties": {
+        "vehicle": { "type": "string", "description": "Vehicle identifier" },
+        "code": { "type": "string", "description": "Unit code" },
+        "registration": { "type": "string", "description": "Vehicle registration number" },
+        "client": { "type": "string", "description": "Client or distributor name" },
+        "wilaya": { "type": "string", "description": "Target Wilaya" },
+        "blNumber": { "type": "string", "description": "Delivery Note Number" },
+        "invoiceNumber": { "type": "string", "description": "Invoice Number" },
+        "clientPhone": { "type": "string", "description": "Client phone number" },
+        "entryCompany": { "type": "string", "description": "Time of entry to company" },
+        "entryDock": { "type": "string", "description": "Time of entry to dock" },
+        "exitDock": { "type": "string", "description": "Time of exit from dock" },
+        "driver": { "type": "string", "description": "Driver name" },
+        "load": { "type": "number", "description": "Load percentage" },
+        "status": { "type": "string", "description": "Mission status", "enum": ["Chargement", "En Transit", "Livré", "En Attente", "Retour à Vide", "Repos Chauffeur", "Maintenance"] },
+        "destination": { "type": "string", "description": "Destination city" },
+        "origin": { "type": "string", "description": "Origin city" },
+        "distance": { "type": "number", "description": "Distance in km" },
+        "fuel": { "type": "number", "description": "Fuel consumption in L/100km" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" },
+        "createdBy": { "type": "string", "description": "User ID who created the record" }
+      },
+      "required": ["status", "createdAt"]
+    },
+    "notification": {
+      "title": "Notification",
+      "description": "System notification for users.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Notification title" },
+        "message": { "type": "string", "description": "Notification message" },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "error"] },
+        "read": { "type": "boolean", "description": "Whether the notification has been read" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "recipientRole": { "type": "string", "description": "Target role for the notification" }
+      },
+      "required": ["title", "message", "createdAt"]
+    }
+  },
+  "firestore": {
+    "movements/{movementId}": {
+      "schema": "movement",
+      "description": "Collection of logistics movements"
+    },
+    "notifications/{notificationId}": {
+      "schema": "notification",
+      "description": "Collection of system notifications"
+    }
+  }
+}

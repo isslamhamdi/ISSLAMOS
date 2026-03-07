@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserEmail() {
+      return request.auth.token.email;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (getUserEmail() == 'admin@petrobaraka.com' || 
+         request.auth.token.email == "izzlemovic@gmail.com");
+    }
+
+    function isScheduler() {
+      return isAuthenticated() && (getUserEmail() == 'planification@petrobaraka.com' || isAdmin());
+    }
+
+    function isCommercial() {
+      return isAuthenticated() && (getUserEmail() == 'commercial@petrobaraka.com' || isAdmin());
+    }
+
+    function isWarehouse() {
+      return isAuthenticated() && (getUserEmail() == 'logistique@petrobaraka.com' || isAdmin());
+    }
+
+    // Movement rules
+    match /movements/{movementId} {
+      allow read: if true;
+      allow write: if true; // TEMPORARY: Allow all writes for debugging
+    }
+
+    // Notification rules
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow write: if true; // TEMPORARY: Allow all writes for debugging
+    }
+  }
+}

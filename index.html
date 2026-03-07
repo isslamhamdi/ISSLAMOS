@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      /**
+       * EMERGENCY FIX: "Uncaught TypeError: Cannot set property fetch of #<Window> which has only a getter"
+       * This script runs as early as possible to prevent third-party libraries from crashing 
+       * when they attempt to polyfill the 'fetch' API in restricted environments.
+       */
+      (function() {
+        try {
+          const win = window;
+          const nativeFetch = win.fetch;
+          
+          // Check if we can redefine the property
+          const desc = Object.getOwnPropertyDescriptor(win, 'fetch');
+          if (desc && desc.configurable === false) {
+            return; // Cannot redefine, hope for the best
+          }
+
+          Object.defineProperty(win, 'fetch', {
+            get: function() { return nativeFetch; },
+            set: function(v) { 
+              console.warn('BARAKA LOGISTIQUE System: Blocked attempt to overwrite fetch API.');
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          // Silent fail to ensure app continues loading
+        }
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BARAKA LOGISTIQUE | Système de Pilotage</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
