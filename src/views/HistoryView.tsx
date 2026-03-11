@@ -174,17 +174,19 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             />
           </div>
           
-          <div className="flex items-center gap-2 col-span-2">
+          <div className="flex items-center gap-2 col-span-2 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20">
             <CustomDatePicker 
               selected={startDate ? new Date(startDate) : null}
               onChange={handleStartDateChange}
               placeholderText="jj/mm/aaaa"
+              className="w-full"
             />
-            <span className="text-white font-bold px-1">-</span>
+            <div className="w-1 h-1 rounded-full bg-white/30" />
             <CustomDatePicker 
               selected={endDate ? new Date(endDate) : null}
               onChange={handleEndDateChange}
               placeholderText="jj/mm/aaaa"
+              className="w-full"
             />
           </div>
 
@@ -198,6 +200,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <option value="All">Tous les statuts</option>
               <option value="Livré">Livré</option>
               <option value="En Transit">En Transit</option>
+              <option value="Déchargement">Déchargement</option>
+              <option value="Retour à Vide">Retour à Vide</option>
               <option value="Chargement">Chargement</option>
               <option value="Maintenance">Maintenance</option>
             </select>

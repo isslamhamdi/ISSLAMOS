@@ -318,3 +318,12 @@
 .translate-z-40 {
   transform: translateZ(40px);
 }
+
+#datepicker-portal {
+  position: relative;
+  z-index: 99999;
+}
+
+.react-datepicker-popper {
+  z-index: 99999 !important;
+}

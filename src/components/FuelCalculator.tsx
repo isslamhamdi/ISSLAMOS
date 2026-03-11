@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Calculator, X } from 'lucide-react';
 
@@ -42,6 +42,22 @@ export const FuelCalculator = () => {
   const [search, setSearch] = useState('');
   const [selectedDest, setSelectedDest] = useState<typeof destinations[0] | null>(null);
 
+  useEffect(() => {
+    const handleToolOpen = (e: any) => {
+      if (e.detail !== 'fuel') setIsOpen(false);
+    };
+    window.addEventListener('tool:open', handleToolOpen);
+    return () => window.removeEventListener('tool:open', handleToolOpen);
+  }, []);
+
+  const toggleOpen = () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+    if (nextState) {
+      window.dispatchEvent(new CustomEvent('tool:open', { detail: 'fuel' }));
+    }
+  };
+
   const filteredDestinations = useMemo(() => {
     return destinations
       .filter(d => d.name.toLowerCase().includes(search.toLowerCase()))
@@ -59,7 +75,7 @@ export const FuelCalculator = () => {
   return (
     <div className="fixed bottom-4 right-20 z-[100]">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
         className="p-3 bg-brand-green text-white rounded-full shadow-lg hover:bg-brand-green/90 transition-all flex items-center justify-center"
         title="Analyse Financière"
         style={{ width: '48px', height: '48px' }}

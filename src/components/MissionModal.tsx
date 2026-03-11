@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Activity, X } from 'lucide-react';
-import { doc, updateDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, addDoc, setDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { playNotificationSound } from '../utils/audio';
 import { Movement, Role, Status, Notification } from '../types';
@@ -15,6 +15,7 @@ interface MissionModalProps {
   setShowSuccess: (show: boolean) => void;
   role: Role;
   addNotification: (notif: Omit<Notification, 'id' | 'read' | 'time'>) => void;
+  movementsList: Movement[];
 }
 
 export const MissionModal: React.FC<MissionModalProps> = ({ 
@@ -23,9 +24,20 @@ export const MissionModal: React.FC<MissionModalProps> = ({
   editingMission, 
   setShowSuccess, 
   role,
-  addNotification
+  addNotification,
+  movementsList
 }) => {
   if (!isOpen) return null;
+
+  // Get list of drivers and vehicles already in an active mission
+  // Active means status is not 'Livré', 'Maintenance', 'Malade', 'Repos Chauffeur', 'Bases / Dépôts'
+  const busyDrivers = movementsList
+    .filter(m => !['Livré', 'Maintenance', 'Malade', 'Repos Chauffeur', 'Bases / Dépôts', 'En Attente'].includes(m.status))
+    .map(m => m.driver);
+  
+  const busyVehicles = movementsList
+    .filter(m => !['Livré', 'Maintenance', 'Malade', 'Repos Chauffeur', 'Bases / Dépôts', 'En Attente'].includes(m.status))
+    .map(m => m.vehicle);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
@@ -73,7 +85,9 @@ export const MissionModal: React.FC<MissionModalProps> = ({
             blNumber: formData.get('blNumber') as string,
             invoiceNumber: formData.get('invoiceNumber') as string,
             clientPhone: formData.get('clientPhone') as string,
-            type: 'truck'
+            type: 'truck',
+            validatedKm: Number(formData.get('validatedKm')) || 0,
+            validatedTonnage: Number(formData.get('validatedTonnage')) || 0
           };
 
           // Enforce logical load percentages based on status
@@ -84,7 +98,9 @@ export const MissionModal: React.FC<MissionModalProps> = ({
           }
 
           try {
+            let missionId = '';
             if (editingMission) {
+              missionId = editingMission.id;
               const missionRef = doc(db, 'movements', editingMission.id);
               await updateDoc(missionRef, {
                 ...missionData,
@@ -106,13 +122,29 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                 });
               }
             } else {
-              await addDoc(collection(db, 'movements'), {
+              const docRef = await addDoc(collection(db, 'movements'), {
                 ...missionData,
                 ecoScore: 100,
                 createdAt: Timestamp.now(),
                 updatedAt: Timestamp.now()
               });
+              missionId = docRef.id;
             }
+
+            // ARCHIVE SYSTEM: Create a copy in history collection to ensure data integrity
+            // This ensures that even if a mission is deleted from active movements, 
+            // the history and leaderboard remain accurate.
+            const historyRef = doc(db, 'history', missionId);
+            await setDoc(historyRef, {
+              ...missionData,
+              originalMissionId: missionId,
+              archivedAt: Timestamp.now(),
+              createdAt: editingMission?.createdAt || Timestamp.now(),
+              ecoScore: editingMission?.ecoScore || 100,
+              // Add specific fields for leaderboard if needed
+              validatedKm: (missionData as any).validatedKm || missionData.distance || 0,
+              validatedTonnage: (missionData as any).validatedTonnage || missionData.load || 0
+            });
 
             // Notification logic for Commercial role
             if ((role as any) === 'COMMERCIAL' && !editingMission) {
@@ -130,7 +162,6 @@ export const MissionModal: React.FC<MissionModalProps> = ({
             setShowSuccess(true);
           } catch (error) {
             console.error("Error saving mission:", error);
-            // You might want to show an error toast here
           }
         }}>
           {role !== 'COMMERCIAL' && (
@@ -196,10 +227,25 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                       const wilayaInput = form.querySelector('[name="wilaya"]') as HTMLInputElement;
                       const destinationInput = form.querySelector('[name="destination"]') as HTMLInputElement;
                       const phoneInput = form.querySelector('[name="clientPhone"]') as HTMLInputElement;
+                      const distanceInput = form.querySelector('[name="distance"]') as HTMLInputElement;
                       
                       if (wilayaInput) wilayaInput.value = selectedDistributor.wilaya;
                       if (destinationInput) destinationInput.value = selectedDistributor.wilaya;
                       if (phoneInput) phoneInput.value = selectedDistributor.phone;
+                      
+                      // Calculate approximate distance from base (Sétif: 36.1900, 5.4100)
+                      if (distanceInput && selectedDistributor.lat && selectedDistributor.lng) {
+                        const R = 6371; // Radius of the earth in km
+                        const dLat = (selectedDistributor.lat - 36.1900) * Math.PI / 180;
+                        const dLon = (selectedDistributor.lng - 5.4100) * Math.PI / 180;
+                        const a = 
+                          Math.sin(dLat/2) * Math.sin(dLat/2) +
+                          Math.cos(36.1900 * Math.PI / 180) * Math.cos(selectedDistributor.lat * Math.PI / 180) * 
+                          Math.sin(dLon/2) * Math.sin(dLon/2); 
+                        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+                        const d = R * c; // Distance in km
+                        distanceInput.value = Math.round(d * 1.2).toString(); // Add 20% for road distance
+                      }
                     }
                   }
                 }}
@@ -301,9 +347,19 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                     }}
                   >
                     <option value="">Sélectionner un chauffeur</option>
-                    {drivers.map((d, idx) => (
-                      <option key={idx} value={d.name}>{d.name}</option>
-                    ))}
+                    {drivers.map((d, idx) => {
+                      const isBusy = busyDrivers.includes(d.name) && d.name !== editingMission?.driver;
+                      return (
+                        <option 
+                          key={idx} 
+                          value={d.name} 
+                          disabled={isBusy}
+                          className={isBusy ? 'text-slate-300 italic' : ''}
+                        >
+                          {d.name} {isBusy ? '(En mission)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -339,6 +395,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                     {role === 'DRIVER' && (
                       <>
                         <option value="En Transit">En Transit</option>
+                        <option value="Déchargement">Déchargement</option>
                         <option value="Livré">Livré</option>
                         <option value="Retour à Vide">Retour à Vide</option>
                       </>
@@ -346,6 +403,7 @@ export const MissionModal: React.FC<MissionModalProps> = ({
                     {role === 'ADMIN' && (
                       <>
                         <option value="Livré">Livré</option>
+                        <option value="Déchargement">Déchargement</option>
                         <option value="Retour à Vide">Retour à Vide</option>
                       </>
                     )}
@@ -418,6 +476,32 @@ export const MissionModal: React.FC<MissionModalProps> = ({
               <input type="hidden" name="distance" defaultValue={editingMission?.distance} />
               <input type="hidden" name="fuel" defaultValue={editingMission?.fuel} />
             </>
+          )}
+
+          {/* Validation Metrics (Only for Admin/Warehouse when mission is advanced) */}
+          {(role === 'ADMIN' || role === 'WAREHOUSE') && editingMission && (
+            <div className="grid grid-cols-2 gap-3 bg-brand-green/5 p-3 rounded-xl border border-brand-green/20">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-brand-green uppercase tracking-wider">Kilométrage Réel (Validé)</label>
+                <input 
+                  type="number"
+                  name="validatedKm" 
+                  defaultValue={(editingMission as any).validatedKm || editingMission.distance} 
+                  placeholder="KM réels..." 
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-brand-green dark:text-slate-200"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-brand-green uppercase tracking-wider">Tonnage Réel (Validé)</label>
+                <input 
+                  type="number"
+                  name="validatedTonnage" 
+                  defaultValue={(editingMission as any).validatedTonnage || editingMission.load} 
+                  placeholder="Tonnage réel..." 
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:border-brand-green dark:text-slate-200"
+                />
+              </div>
+            </div>
           )}
 
           <div className="pt-2">

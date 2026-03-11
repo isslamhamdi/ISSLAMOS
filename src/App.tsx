@@ -7,7 +7,10 @@ import {
   History,
   Map as MapIcon,
   Bell,
-  CheckCircle2
+  CheckCircle2,
+  Trophy,
+  Droplet,
+  Sparkles
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -34,6 +37,7 @@ import { Role, View, Notification, Movement, Status } from './types';
 import { WeatherWidget } from './components/WeatherWidget';
 import { KeyboardShortcutsLegend } from './components/KeyboardShortcutsLegend';
 import { FuelCalculator } from './components/FuelCalculator';
+import { ComplianceMatrix } from './components/ComplianceMatrix';
 import { Toast } from './components/Toast';
 import { LoginModal } from './components/LoginModal';
 import { MissionModal } from './components/MissionModal';
@@ -42,6 +46,9 @@ import { DriversView } from './views/DriversView';
 import { HistoryView } from './views/HistoryView';
 import { MapView } from './views/MapView';
 import { SettingsView } from './views/SettingsView';
+import { LeaderboardView } from './views/LeaderboardView';
+import { OilChangeView } from './views/OilChangeView';
+import { HygieneView } from './views/HygieneView';
 import { Loader } from './components/Loader';
 import { Onboarding } from './components/Onboarding';
 import { distributors } from './data/distributors';
@@ -125,6 +132,7 @@ export default function App() {
   }, []);
 
   const [movementsList, setMovementsList] = React.useState<Movement[]>([]);
+  const [historyList, setHistoryList] = React.useState<Movement[]>([]);
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingMission, setEditingMission] = React.useState<Movement | null>(null);
   const [isLoginOpen, setIsLoginOpen] = React.useState(false);
@@ -216,7 +224,7 @@ export default function App() {
 
       // Helper data for random generation
       const clients = distributors.map(d => d.name);
-      const statuses: Status[] = ['Livré', 'En Transit', 'Chargement', 'Maintenance', 'En Attente'];
+      const statuses: Status[] = ['Livré', 'En Transit', 'Déchargement', 'Retour à Vide', 'Chargement', 'Maintenance', 'En Attente'];
       const activeDrivers = driversData.filter(d => !d.trailerType.toLowerCase().includes('citerne') && d.name !== 'Sans chauffeur');
 
       const historicalMissions = [];
@@ -435,6 +443,41 @@ export default function App() {
             needsUpdate = true;
           }
 
+          // Mark past missions as "Livré"
+          let isPastDate = false;
+          const createdAt = (data as any).createdAt;
+          if (createdAt) {
+            let date: Date | null = null;
+            if (typeof createdAt.toDate === 'function') {
+              date = createdAt.toDate();
+            } else if (createdAt.seconds) {
+              date = new Date(createdAt.seconds * 1000);
+            } else if (typeof createdAt === 'string') {
+              date = new Date(createdAt);
+            }
+            
+            if (date) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const missionDate = new Date(date);
+              missionDate.setHours(0, 0, 0, 0);
+              
+              if (missionDate < today) {
+                isPastDate = true;
+              }
+            }
+          }
+
+          if (isPastDate && data.status !== 'Livré') {
+            data.status = 'Livré';
+            updateData.status = 'Livré';
+            if (data.load !== 100) {
+              data.load = 100;
+              updateData.load = 100;
+            }
+            needsUpdate = true;
+          }
+
           if (needsUpdate) {
             updateDoc(doc(db, 'movements', docSnapshot.id), updateData).catch(console.error);
           }
@@ -468,6 +511,51 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // History Listener
+  React.useEffect(() => {
+    const q = query(collection(db, 'history'), orderBy('archivedAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const historyData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Movement[];
+      setHistoryList(historyData);
+    }, (error) => {
+      console.error("History listener error:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Auto-start missions (Simulation)
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      movementsList.forEach(async (mission) => {
+        if (mission.status === 'Chargement' && mission.updatedAt && mission.updatedAt.toDate) {
+          const updatedAt = mission.updatedAt.toDate().getTime();
+          // If in Chargement for more than 2 minutes (120000 ms), auto-start
+          if (now - updatedAt > 120000) {
+            try {
+              await updateDoc(doc(db, 'movements', mission.id), {
+                status: 'En Transit',
+                updatedAt: Timestamp.now()
+              });
+              addNotification({
+                type: 'mission',
+                title: 'Départ Automatique',
+                message: `Le véhicule ${mission.vehicle} a terminé son chargement et est en route vers ${mission.destination}.`
+              });
+            } catch (error) {
+              console.error("Error auto-starting mission:", error);
+            }
+          }
+        }
+      });
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [movementsList, addNotification]);
 
   // Notifications Listener
   React.useEffect(() => {
@@ -789,7 +877,7 @@ export default function App() {
 
     // Stats
     const totalVehicules = filtered.length;
-    const enTransit = filtered.filter(m => m.status === 'En Transit').length;
+    const enTransit = filtered.filter(m => m.status === 'En Transit' || m.status === 'Déchargement' || m.status === 'Retour à Vide').length;
     const maintenance = filtered.filter(m => m.status === 'Maintenance').length;
     const chargeMoyenne = Math.round(filtered.reduce((acc, curr) => acc + Number(curr.load), 0) / totalVehicules) || 0;
 
@@ -1024,71 +1112,90 @@ export default function App() {
 
             {/* Navigation Subtile */}
             <nav className="hidden xl:flex items-center gap-1 bg-slate-50/50 dark:bg-slate-800/50 p-1 rounded-2xl border border-slate-100 dark:border-slate-800">
-              <motion.button 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCurrentView('DASHBOARD')}
-                className={`p-2.5 transition-all rounded-xl border ${
-                  currentView === 'DASHBOARD' 
-                  ? 'text-brand-green bg-white dark:bg-slate-700 shadow-xs border-slate-200 dark:border-slate-600' 
-                  : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
-                }`} 
-                title="Tableau de Bord"
-              >
-                <LayoutDashboard className="w-5 h-5" />
-              </motion.button>
-              <motion.button 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCurrentView('DRIVERS')}
-                className={`p-2.5 transition-all rounded-xl border ${
-                  currentView === 'DRIVERS' 
-                  ? 'text-brand-green bg-white dark:bg-slate-700 shadow-xs border-slate-200 dark:border-slate-600' 
-                  : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
-                }`} 
-                title="Conducteurs"
-              >
-                <Users className="w-5 h-5" />
-              </motion.button>
-              <motion.button 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCurrentView('HISTORY')}
-                className={`p-2.5 transition-all rounded-xl border ${
-                  currentView === 'HISTORY' 
-                  ? 'text-brand-green bg-white dark:bg-slate-700 shadow-xs border-slate-200 dark:border-slate-600' 
-                  : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
-                }`} 
-                title="Historique"
-              >
-                <History className="w-5 h-5" />
-              </motion.button>
-              <motion.button 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCurrentView('MAP')}
-                className={`p-2.5 transition-all rounded-xl border ${
-                  currentView === 'MAP' 
-                  ? 'text-brand-green bg-white dark:bg-slate-700 shadow-xs border-slate-200 dark:border-slate-600' 
-                  : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
-                }`} 
-                title="Suivi GPS"
-              >
-                <MapIcon className="w-5 h-5" />
-              </motion.button>
-              <motion.button 
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setCurrentView('SETTINGS')}
-                className={`p-2.5 transition-all rounded-xl border ${
-                  currentView === 'SETTINGS' 
-                  ? 'text-brand-green bg-white dark:bg-slate-700 shadow-xs border-slate-200 dark:border-slate-600' 
-                  : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
-                }`} 
-                title="Paramètres"
-              >
-                <Settings className="w-5 h-5" />
-              </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCurrentView('DASHBOARD')}
+                  className={`flex items-center gap-2 px-4 py-2.5 transition-all rounded-xl border relative group ${
+                    currentView === 'DASHBOARD' 
+                    ? 'text-white bg-gradient-to-br from-brand-green to-emerald-600 shadow-md shadow-brand-green/30 border-transparent' 
+                    : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
+                  }`} 
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                  <span className={`whitespace-nowrap text-sm font-medium transition-all duration-700 ease-in-out overflow-hidden ${currentView === 'DASHBOARD' ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100'}`}>Tableau de Bord</span>
+                  {currentView === 'DASHBOARD' && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCurrentView('DRIVERS')}
+                  className={`flex items-center gap-2 px-4 py-2.5 transition-all rounded-xl border relative group ${
+                    currentView === 'DRIVERS' 
+                    ? 'text-white bg-gradient-to-br from-brand-green to-emerald-600 shadow-md shadow-brand-green/30 border-transparent' 
+                    : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
+                  }`} 
+                >
+                  <Users className="w-5 h-5" />
+                  <span className={`whitespace-nowrap text-sm font-medium transition-all duration-700 ease-in-out overflow-hidden ${currentView === 'DRIVERS' ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100'}`}>Conducteurs</span>
+                  {currentView === 'DRIVERS' && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCurrentView('HISTORY')}
+                  className={`flex items-center gap-2 px-4 py-2.5 transition-all rounded-xl border relative group ${
+                    currentView === 'HISTORY' 
+                    ? 'text-white bg-gradient-to-br from-brand-green to-emerald-600 shadow-md shadow-brand-green/30 border-transparent' 
+                    : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
+                  }`} 
+                >
+                  <History className="w-5 h-5" />
+                  <span className={`whitespace-nowrap text-sm font-medium transition-all duration-700 ease-in-out overflow-hidden ${currentView === 'HISTORY' ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100'}`}>Historique</span>
+                  {currentView === 'HISTORY' && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCurrentView('MAP')}
+                  className={`flex items-center gap-2 px-4 py-2.5 transition-all rounded-xl border relative group ${
+                    currentView === 'MAP' 
+                    ? 'text-white bg-gradient-to-br from-brand-green to-emerald-600 shadow-md shadow-brand-green/30 border-transparent' 
+                    : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
+                  }`} 
+                >
+                  <MapIcon className="w-5 h-5" />
+                  <span className={`whitespace-nowrap text-sm font-medium transition-all duration-700 ease-in-out overflow-hidden ${currentView === 'MAP' ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100'}`}>Suivi GPS</span>
+                  {currentView === 'MAP' && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCurrentView('LEADERBOARD')}
+                  className={`flex items-center gap-2 px-4 py-2.5 transition-all rounded-xl border relative group ${
+                    currentView === 'LEADERBOARD' 
+                    ? 'text-white bg-gradient-to-br from-brand-green to-emerald-600 shadow-md shadow-brand-green/30 border-transparent' 
+                    : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
+                  }`} 
+                >
+                  <Trophy className="w-5 h-5" />
+                  <span className={`whitespace-nowrap text-sm font-medium transition-all duration-700 ease-in-out overflow-hidden ${currentView === 'LEADERBOARD' ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100'}`}>Classement</span>
+                  {currentView === 'LEADERBOARD' && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                </motion.button>
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setCurrentView('SETTINGS')}
+                  className={`flex items-center gap-2 px-4 py-2.5 transition-all rounded-xl border relative group ${
+                    currentView === 'SETTINGS' 
+                    ? 'text-white bg-gradient-to-br from-brand-green to-emerald-600 shadow-md shadow-brand-green/30 border-transparent' 
+                    : 'text-slate-400 hover:text-brand-green hover:bg-white dark:hover:bg-slate-700 border-transparent'
+                  }`} 
+                >
+                  <Settings className="w-5 h-5" />
+                  <span className={`whitespace-nowrap text-sm font-medium transition-all duration-700 ease-in-out overflow-hidden ${currentView === 'SETTINGS' ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100'}`}>Paramètres</span>
+                  {currentView === 'SETTINGS' && <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full" />}
+                </motion.button>
             </nav>
             
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 w-full lg:w-auto">
@@ -1218,7 +1325,7 @@ export default function App() {
               searchRef={searchRef}
             />
           ) : currentView === 'DRIVERS' ? (
-            <DriversView role={role} handleNewMissionClick={handleNewMissionClick} />
+            <DriversView role={role} handleNewMissionClick={handleNewMissionClick} movements={movementsList} />
           ) : currentView === 'HISTORY' ? (
             <HistoryView 
               key={`history-${startDate}-${endDate}`}
@@ -1238,7 +1345,13 @@ export default function App() {
               role={role}
             />
           ) : currentView === 'MAP' ? (
-            <MapView />
+            <MapView movementsList={movementsList} addNotification={addNotification} />
+          ) : currentView === 'LEADERBOARD' ? (
+            <LeaderboardView movementsList={movementsList} />
+          ) : currentView === 'OIL_CHANGE' ? (
+            <OilChangeView movementsList={movementsList} />
+          ) : currentView === 'HYGIENE' ? (
+            <HygieneView movementsList={movementsList} />
           ) : (
             <SettingsView 
               role={role} 
@@ -1310,9 +1423,11 @@ export default function App() {
             setShowSuccess={setShowSuccess}
             role={role}
             addNotification={addNotification}
+            movementsList={movementsList}
           />
         </motion.div>
         <FuelCalculator />
+        <ComplianceMatrix />
         <KeyboardShortcutsLegend />
       </div>
     </div>

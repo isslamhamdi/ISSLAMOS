@@ -7,20 +7,26 @@ export const StatusPill = ({ status }: { status: Status }) => {
     'Maintenance': 'bg-red-50 dark:bg-red-500/10 text-danger',
     'En Transit': 'bg-emerald-50 dark:bg-emerald-500/10 text-success',
     'Chargement': 'bg-amber-50 dark:bg-amber-500/10 text-warning',
+    'Déchargement': 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400',
     'Livré': 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
     'En Attente': 'bg-slate-50 dark:bg-slate-500/10 text-slate-500 dark:text-slate-400',
     'Retour à Vide': 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400',
-    'Repos Chauffeur': 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+    'Repos Chauffeur': 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
+    'Bases / Dépôts': 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100',
+    'Malade': 'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400'
   };
 
   const pulseColors: Record<Status, string> = {
     'Maintenance': 'bg-danger',
     'En Transit': 'bg-success',
     'Chargement': 'bg-warning',
+    'Déchargement': 'bg-orange-500',
     'Livré': 'bg-blue-500',
     'En Attente': 'bg-slate-400',
     'Retour à Vide': 'bg-purple-500',
-    'Repos Chauffeur': 'bg-indigo-500'
+    'Repos Chauffeur': 'bg-indigo-500',
+    'Bases / Dépôts': 'bg-slate-800 dark:bg-white',
+    'Malade': 'bg-rose-500'
   };
 
   return (

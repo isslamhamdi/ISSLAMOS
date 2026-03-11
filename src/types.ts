@@ -1,6 +1,24 @@
-export type Status = 'Maintenance' | 'En Transit' | 'Chargement' | 'Livré' | 'En Attente' | 'Retour à Vide' | 'Repos Chauffeur';
+export interface Driver {
+  code: string;
+  registration: string;
+  type: string;
+  brand: string;
+  trailerMat: string;
+  trailerBrand: string;
+  trailerType: string;
+  phone: string;
+  name: string;
+  product: string;
+  licenseType: string;
+  medicalVisitDate: string;
+  joinDate: string;
+  illnessStartDate?: string;
+  illnessEndDate?: string;
+}
+
+export type Status = 'Maintenance' | 'En Transit' | 'Chargement' | 'Déchargement' | 'Livré' | 'En Attente' | 'Retour à Vide' | 'Repos Chauffeur' | 'Bases / Dépôts' | 'Malade';
 export type Role = 'ADMIN' | 'VIEWER' | 'SCHEDULER' | 'DRIVER' | 'COMMERCIAL' | 'WAREHOUSE';
-export type View = 'DASHBOARD' | 'DRIVERS' | 'SETTINGS' | 'HISTORY' | 'MAP';
+export type View = 'DASHBOARD' | 'DRIVERS' | 'SETTINGS' | 'HISTORY' | 'MAP' | 'LEADERBOARD' | 'OIL_CHANGE' | 'HYGIENE';
 
 export interface Notification {
   id: string;
@@ -28,10 +46,39 @@ export interface HistoryEntry {
 export interface VehiclePosition {
   id: string;
   vehicle: string;
+  driver: string;
+  driverPhone?: string;
   lat: number;
   lng: number;
   speed: number;
   status: Status;
+  lastUpdate: string;
+  destination?: string;
+  distance?: number; // Total distance
+  distanceTraveled?: number;
+  distanceRemaining?: number;
+  path?: [number, number][];
+  eta?: string;
+  isOverspeeding?: boolean;
+  isStoppedAnormally?: boolean;
+  stoppedTime?: number; // timestamp of when it stopped
+  oilLife?: number;
+  tireLife?: number;
+  cleanliness?: 'PROPRE' | 'À LAVER';
+  currentKm?: number;
+  nextOilChangeKm?: number;
+  load?: number;
+  ecoScore?: number;
+}
+
+export interface Distributor {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  type: 'Base' | 'Client' | 'Relais';
+  address: string;
+  gpsLink?: string;
 }
 
 export interface Movement {
@@ -45,6 +92,7 @@ export interface Movement {
   entryDock: string;
   exitDock: string;
   driver: string;
+  driverPhone?: string;
   status: Status;
   load: number;
   time: string;
@@ -54,7 +102,14 @@ export interface Movement {
   fuel: number; // L/100km
   ecoScore: number; // 0-100
   type: 'truck' | 'bus' | 'trailer';
+  oilLife?: number;
+  tireLife?: number;
+  cleanliness?: 'PROPRE' | 'À LAVER';
+  currentKm?: number;
+  nextOilChangeKm?: number;
   blNumber?: string;
   invoiceNumber?: string;
   clientPhone?: string;
+  createdAt?: any;
+  updatedAt?: any;
 }

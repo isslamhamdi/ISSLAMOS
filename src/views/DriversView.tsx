@@ -1,19 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Users, UserPlus } from 'lucide-react';
 import { KPICard } from '../components/KPICard';
 import { DriverCard } from '../components/DriverCard';
-import { Role } from '../types';
+import { DriverDetailModal } from '../components/DriverDetailModal';
+import { Role, Movement, Driver } from '../types';
 import { drivers } from '../data/drivers';
 
 interface DriversViewProps {
   role: Role;
   handleNewMissionClick: () => void;
+  movements: Movement[];
 }
 
-export const DriversView: React.FC<DriversViewProps> = ({ role, handleNewMissionClick }) => {
-  const displayDrivers = drivers.filter(d => d.name !== "Sans chauffeur");
+export const DriversView: React.FC<DriversViewProps> = ({ role, handleNewMissionClick, movements }) => {
+  const [driversList, setDriversList] = useState<Driver[]>(drivers);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const displayDrivers = driversList.filter(d => d.name !== "Sans chauffeur");
   const totalDrivers = displayDrivers.length;
+  
+  const handleUpdateDriver = (updatedDriver: Driver) => {
+    setDriversList(prev => prev.map(d => d.code === updatedDriver.code ? updatedDriver : d));
+    setSelectedDriver(updatedDriver);
+  };
   
   return (
     <div className="space-y-8">
@@ -42,17 +51,33 @@ export const DriversView: React.FC<DriversViewProps> = ({ role, handleNewMission
           )}
         </div>
         <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {displayDrivers.map((d, i) => (
-            <DriverCard 
-              key={d.code} 
-              name={d.name} 
-              status={i % 3 === 0 ? "Mission" : i % 3 === 1 ? "Actif" : "Repos"} 
-              unit={d.code} 
-              license="C1, E" 
-            />
-          ))}
+          {displayDrivers.map((d, i) => {
+            const today = new Date().toISOString().split('T')[0];
+            const isMalade = d.illnessStartDate && d.illnessEndDate && today >= d.illnessStartDate && today <= d.illnessEndDate;
+            const yearsOfService = new Date().getFullYear() - new Date(d.joinDate).getFullYear();
+            return (
+              <div key={d.code} onClick={() => setSelectedDriver(d)} className="cursor-pointer">
+                <DriverCard 
+                  name={d.name} 
+                  status={isMalade ? "Malade" : i % 3 === 0 ? "Mission" : i % 3 === 1 ? "Actif" : "Repos"} 
+                  unit={d.code} 
+                  license={d.licenseType} 
+                  phone={d.phone}
+                  loyalty={yearsOfService >= 5 ? 'OR' : yearsOfService >= 2 ? 'ARGENT' : 'BRONZE'}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
+
+      <DriverDetailModal 
+        driver={selectedDriver} 
+        isOpen={!!selectedDriver} 
+        onClose={() => setSelectedDriver(null)}
+        movements={movements}
+        onUpdateDriver={handleUpdateDriver}
+      />
     </div>
   );
 };
